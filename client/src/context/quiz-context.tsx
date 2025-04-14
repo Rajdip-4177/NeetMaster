@@ -17,6 +17,14 @@ export interface QuestionState {
   explanation?: string;
 }
 
+interface QuizStats {
+  total: number;
+  answered: number;
+  unanswered: number;
+  reviewed: number;
+  answeredAndReviewed: number;
+}
+
 interface QuizContextType {
   quizQuestions: QuestionState[];
   currentQuestionIndex: number;
@@ -29,6 +37,8 @@ interface QuizContextType {
   submitQuiz: () => void;
   getQuestionStatusColor: (status: QuestionStatus, isCurrent: boolean) => string;
   quizDuration: number;
+  getQuizStats: () => QuizStats;
+  getStatusLabel: (status: QuestionStatus) => string;
 }
 
 const QuizContext = createContext<QuizContextType | null>(null);
