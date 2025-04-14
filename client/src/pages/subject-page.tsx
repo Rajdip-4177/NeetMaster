@@ -88,26 +88,35 @@ export default function SubjectPage() {
                 <p className="text-gray-600 mb-4 line-clamp-2">
                   {chapter.description}
                 </p>
-                <Link href={`/subject/${subject}/${chapter.id}`}>
-                  <Button 
-                    variant="link" 
-                    className={`p-0 ${getSubjectColorClass('text')} font-medium flex items-center`}
-                  >
-                    Start Learning
-                    <svg 
-                      xmlns="http://www.w3.org/2000/svg" 
-                      className="h-5 w-5 ml-1" 
-                      viewBox="0 0 20 20" 
-                      fill="currentColor"
+                <div className="flex flex-col sm:flex-row gap-3 mt-5">
+                  <Link href={`/subject/${subject}/${chapter.id}`} className="flex-1">
+                    <Button 
+                      className={`w-full ${getSubjectColorClass('bg')} ${getSubjectColorClass('hover')} text-white flex items-center justify-center`}
                     >
-                      <path 
-                        fillRule="evenodd" 
-                        d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" 
-                        clipRule="evenodd" 
-                      />
-                    </svg>
-                  </Button>
-                </Link>
+                      Start Learning
+                      <svg 
+                        xmlns="http://www.w3.org/2000/svg" 
+                        className="h-5 w-5 ml-1" 
+                        viewBox="0 0 20 20" 
+                        fill="currentColor"
+                      >
+                        <path 
+                          fillRule="evenodd" 
+                          d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" 
+                          clipRule="evenodd" 
+                        />
+                      </svg>
+                    </Button>
+                  </Link>
+                  <Link href={`/subject/${subject}/${chapter.id}`} className="flex-1">
+                    <Button 
+                      variant="outline"
+                      className={`w-full border ${getSubjectColorClass('border')} ${getSubjectColorClass('text')}`}
+                    >
+                      View Notes
+                    </Button>
+                  </Link>
+                </div>
               </div>
             ))}
           </div>

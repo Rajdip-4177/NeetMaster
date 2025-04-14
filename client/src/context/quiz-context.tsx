@@ -39,6 +39,7 @@ interface QuizContextType {
   quizDuration: number;
   getQuizStats: () => QuizStats;
   getStatusLabel: (status: QuestionStatus) => string;
+  calculateElapsedTime: () => number;
 }
 
 const QuizContext = createContext<QuizContextType | null>(null);
@@ -88,16 +89,23 @@ export const QuizProvider = ({ children }: { children: ReactNode }) => {
   
   // Timer
   useEffect(() => {
+    // Start the timer
     if (!isSubmitted && timeRemaining > 0) {
       const timer = setInterval(() => {
-        setTimeRemaining(prev => prev - 1);
+        setTimeRemaining(prev => {
+          // If time runs out, submit the quiz and clear the interval
+          if (prev <= 1) {
+            setTimeout(() => submitQuiz(), 0);
+            return 0;
+          }
+          return prev - 1;
+        });
       }, 1000);
       
+      // Clean up the interval when the component unmounts or when the quiz is submitted
       return () => clearInterval(timer);
-    } else if (timeRemaining <= 0 && !isSubmitted) {
-      submitQuiz();
     }
-  }, [timeRemaining, isSubmitted]);
+  }, [isSubmitted]);
   
   // Select an option for a question
   const selectOption = (questionIndex: number, optionIndex: number) => {
@@ -143,19 +151,46 @@ export const QuizProvider = ({ children }: { children: ReactNode }) => {
     );
   };
   
+  // Calculate elapsed time (quiz duration - time remaining)
+  const calculateElapsedTime = () => {
+    return quizDuration - timeRemaining;
+  };
+  
   // Submit quiz
   const submitQuiz = () => {
     if (isSubmitted) return;
     
     let calculatedScore = 0;
+    let correct = 0;
+    let incorrect = 0;
+    let unattempted = 0;
     
     quizQuestions.forEach(q => {
       if (q.selectedOption === q.correctOption) {
         calculatedScore += 4;
+        correct++;
       } else if (q.selectedOption !== null) {
         calculatedScore -= 1;
+        incorrect++;
+      } else {
+        unattempted++;
       }
     });
+    
+    // Record additional stats in localStorage for better result tracking
+    try {
+      localStorage.setItem('quizResults', JSON.stringify({
+        score: calculatedScore,
+        totalQuestions: quizQuestions.length,
+        correctAnswers: correct,
+        incorrectAnswers: incorrect,
+        unattempted: unattempted,
+        timeTaken: calculateElapsedTime(),
+        completedAt: new Date().toISOString()
+      }));
+    } catch (e) {
+      console.error("Failed to save quiz results", e);
+    }
     
     setScore(calculatedScore);
     setIsSubmitted(true);
@@ -240,7 +275,8 @@ export const QuizProvider = ({ children }: { children: ReactNode }) => {
         getQuestionStatusColor,
         quizDuration,
         getQuizStats,
-        getStatusLabel
+        getStatusLabel,
+        calculateElapsedTime
       }}
     >
       {children}
