@@ -1,164 +1,200 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertTaskSchema, insertQuizAttemptSchema, insertBookmarkSchema } from "@shared/schema";
 import { setupAuth } from "./auth";
-import { z } from "zod";
+import { insertTaskSchema, insertBookmarkSchema, insertQuizAttemptSchema } from "@shared/schema";
+import { ZodError } from "zod";
+import { fromZodError } from "zod-validation-error";
+
+// Middleware to check if user is authenticated
+const isAuthenticated = (req: Request, res: Response, next: Function) => {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  res.status(401).json({ message: "Unauthorized" });
+};
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Set up authentication
+  // Setup authentication routes
   setupAuth(app);
 
-  // Tasks routes
-  app.get("/api/tasks", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Unauthorized");
-    
-    const tasks = await storage.getTasks(req.user.id);
+  // User profile routes
+  app.get("/api/profile", isAuthenticated, (req, res) => {
+    // User is already available in req.user
+    // Remove sensitive information like password
+    const { password, ...userWithoutPassword } = req.user as Express.User;
+    res.json(userWithoutPassword);
+  });
+
+  app.put("/api/profile", isAuthenticated, async (req, res, next) => {
+    try {
+      const userId = (req.user as Express.User).id;
+      
+      // Calculate age if dateOfBirth is provided
+      if (req.body.dateOfBirth) {
+        const dob = new Date(req.body.dateOfBirth);
+        const today = new Date();
+        let age = today.getFullYear() - dob.getFullYear();
+        const m = today.getMonth() - dob.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+          age--;
+        }
+        req.body.age = age;
+      }
+      
+      // Don't allow updating username or password through this endpoint
+      const { username, password, ...updateData } = req.body;
+      
+      const updatedUser = await storage.updateUser(userId, updateData);
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Remove password from response
+      const { password: _, ...userWithoutPassword } = updatedUser;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Task routes
+  app.get("/api/tasks", isAuthenticated, async (req, res) => {
+    const userId = (req.user as Express.User).id;
+    const tasks = await storage.getTasks(userId);
     res.json(tasks);
   });
 
-  app.post("/api/tasks", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Unauthorized");
-    
+  app.post("/api/tasks", isAuthenticated, async (req, res, next) => {
     try {
-      const taskData = { ...req.body, userId: req.user.id };
-      const validatedData = insertTaskSchema.parse(taskData);
-      const task = await storage.createTask(validatedData);
+      const userId = (req.user as Express.User).id;
+      const taskData = insertTaskSchema.parse(req.body);
+      const task = await storage.createTask({ ...taskData, userId });
       res.status(201).json(task);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors });
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
       }
-      res.status(500).json({ message: "Failed to create task" });
+      next(error);
     }
   });
 
-  app.put("/api/tasks/:id", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Unauthorized");
-    
-    const taskId = parseInt(req.params.id);
-    const task = await storage.getTaskById(taskId);
-    
-    if (!task) {
-      return res.status(404).json({ message: "Task not found" });
-    }
-    
-    if (task.userId !== req.user.id) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-    
+  app.put("/api/tasks/:id", isAuthenticated, async (req, res, next) => {
     try {
+      const taskId = parseInt(req.params.id);
+      const userId = (req.user as Express.User).id;
+      
+      const existingTask = await storage.getTask(taskId);
+      if (!existingTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      if (existingTask.userId !== userId) {
+        return res.status(403).json({ message: "Not authorized to update this task" });
+      }
+      
       const updatedTask = await storage.updateTask(taskId, req.body);
       res.json(updatedTask);
     } catch (error) {
-      res.status(500).json({ message: "Failed to update task" });
+      next(error);
     }
   });
 
-  app.delete("/api/tasks/:id", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Unauthorized");
-    
-    const taskId = parseInt(req.params.id);
-    const task = await storage.getTaskById(taskId);
-    
-    if (!task) {
-      return res.status(404).json({ message: "Task not found" });
-    }
-    
-    if (task.userId !== req.user.id) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-    
-    const deleted = await storage.deleteTask(taskId);
-    if (deleted) {
-      res.status(204).send();
-    } else {
-      res.status(500).json({ message: "Failed to delete task" });
-    }
-  });
-
-  // Quiz attempts routes
-  app.get("/api/quiz-attempts", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Unauthorized");
-    
-    const attempts = await storage.getQuizAttempts(req.user.id);
-    res.json(attempts);
-  });
-
-  app.post("/api/quiz-attempts", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Unauthorized");
-    
+  app.delete("/api/tasks/:id", isAuthenticated, async (req, res, next) => {
     try {
-      const attemptData = { ...req.body, userId: req.user.id };
-      const validatedData = insertQuizAttemptSchema.parse(attemptData);
-      const attempt = await storage.saveQuizAttempt(validatedData);
-      res.status(201).json(attempt);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors });
+      const taskId = parseInt(req.params.id);
+      const userId = (req.user as Express.User).id;
+      
+      const existingTask = await storage.getTask(taskId);
+      if (!existingTask) {
+        return res.status(404).json({ message: "Task not found" });
       }
-      res.status(500).json({ message: "Failed to save quiz attempt" });
+      
+      if (existingTask.userId !== userId) {
+        return res.status(403).json({ message: "Not authorized to delete this task" });
+      }
+      
+      const success = await storage.deleteTask(taskId);
+      if (success) {
+        res.status(204).end();
+      } else {
+        res.status(500).json({ message: "Failed to delete task" });
+      }
+    } catch (error) {
+      next(error);
     }
   });
 
-  // Bookmarks routes
-  app.get("/api/bookmarks", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Unauthorized");
-    
-    const bookmarks = await storage.getBookmarks(req.user.id);
+  // Bookmark routes
+  app.get("/api/bookmarks", isAuthenticated, async (req, res) => {
+    const userId = (req.user as Express.User).id;
+    const bookmarks = await storage.getBookmarks(userId);
     res.json(bookmarks);
   });
 
-  app.post("/api/bookmarks", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Unauthorized");
-    
+  app.post("/api/bookmarks", isAuthenticated, async (req, res, next) => {
     try {
-      const bookmarkData = { ...req.body, userId: req.user.id };
-      const validatedData = insertBookmarkSchema.parse(bookmarkData);
-      
-      const bookmark = await storage.createBookmark(validatedData);
+      const userId = (req.user as Express.User).id;
+      const bookmarkData = insertBookmarkSchema.parse(req.body);
+      const bookmark = await storage.createBookmark({ ...bookmarkData, userId });
       res.status(201).json(bookmark);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors });
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
       }
-      res.status(500).json({ message: "Failed to create bookmark" });
+      next(error);
     }
   });
 
-  app.delete("/api/bookmarks/:questionId", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Unauthorized");
-    
-    const questionId = req.params.questionId;
-    const deleted = await storage.deleteBookmark(req.user.id, questionId);
-    
-    if (deleted) {
-      res.status(204).send();
-    } else {
-      res.status(404).json({ message: "Bookmark not found" });
-    }
-  });
-
-  // User profile route
-  app.put("/api/user", async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).send("Unauthorized");
-    
+  app.delete("/api/bookmarks/:id", isAuthenticated, async (req, res, next) => {
     try {
-      // Don't allow updating username or password through this route
-      const { username, password, ...allowedUpdates } = req.body;
+      const bookmarkId = parseInt(req.params.id);
+      const userId = (req.user as Express.User).id;
       
-      const updatedUser = await storage.updateUser(req.user.id, allowedUpdates);
-      if (updatedUser) {
-        res.json(updatedUser);
+      const existingBookmark = await storage.getBookmark(bookmarkId);
+      if (!existingBookmark) {
+        return res.status(404).json({ message: "Bookmark not found" });
+      }
+      
+      if (existingBookmark.userId !== userId) {
+        return res.status(403).json({ message: "Not authorized to delete this bookmark" });
+      }
+      
+      const success = await storage.deleteBookmark(bookmarkId);
+      if (success) {
+        res.status(204).end();
       } else {
-        res.status(404).json({ message: "User not found" });
+        res.status(500).json({ message: "Failed to delete bookmark" });
       }
     } catch (error) {
-      res.status(500).json({ message: "Failed to update user profile" });
+      next(error);
+    }
+  });
+
+  // Quiz attempt routes
+  app.get("/api/quiz-attempts", isAuthenticated, async (req, res) => {
+    const userId = (req.user as Express.User).id;
+    const attempts = await storage.getQuizAttempts(userId);
+    res.json(attempts);
+  });
+
+  app.post("/api/quiz-attempts", isAuthenticated, async (req, res, next) => {
+    try {
+      const userId = (req.user as Express.User).id;
+      const attemptData = insertQuizAttemptSchema.parse(req.body);
+      const attempt = await storage.createQuizAttempt({ ...attemptData, userId });
+      res.status(201).json(attempt);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      next(error);
     }
   });
 
   const httpServer = createServer(app);
-
   return httpServer;
 }

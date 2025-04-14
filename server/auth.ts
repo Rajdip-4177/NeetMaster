@@ -5,8 +5,9 @@ import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
-import { User as SelectUser, insertUserSchema } from "@shared/schema";
-import { z } from "zod";
+import { User as SelectUser, loginSchema } from "@shared/schema";
+import { ZodError } from "zod";
+import { fromZodError } from "zod-validation-error";
 
 declare global {
   namespace Express {
@@ -30,18 +31,15 @@ async function comparePasswords(supplied: string, stored: string) {
 }
 
 export function setupAuth(app: Express) {
-  const sessionSecret = process.env.SESSION_SECRET || "neet-master-secret-key";
-  
   const sessionSettings: session.SessionOptions = {
-    secret: sessionSecret,
+    secret: process.env.SESSION_SECRET || "neet-master-secret-key",
     resave: false,
     saveUninitialized: false,
     store: storage.sessionStore,
     cookie: {
+      secure: process.env.NODE_ENV === "production",
       maxAge: 1000 * 60 * 60 * 24 * 7, // 1 week
-      httpOnly: true,
-      sameSite: "lax",
-    },
+    }
   };
 
   app.set("trust proxy", 1);
@@ -58,8 +56,8 @@ export function setupAuth(app: Express) {
         } else {
           return done(null, user);
         }
-      } catch (error) {
-        return done(error);
+      } catch (err) {
+        return done(err);
       }
     }),
   );
@@ -69,63 +67,77 @@ export function setupAuth(app: Express) {
     try {
       const user = await storage.getUser(id);
       done(null, user);
-    } catch (error) {
-      done(error);
+    } catch (err) {
+      done(err);
     }
-  });
-
-  // Registration validation schema
-  const registerSchema = insertUserSchema.extend({
-    confirmPassword: z.string(),
-  }).refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
   });
 
   app.post("/api/register", async (req, res, next) => {
     try {
-      // Validate request data
-      const validatedData = registerSchema.parse(req.body);
-      
-      const existingUser = await storage.getUserByUsername(validatedData.username);
+      const existingUser = await storage.getUserByUsername(req.body.username);
       if (existingUser) {
         return res.status(400).send("Username already exists");
       }
 
-      // Create user with hashed password
-      const { confirmPassword, ...userData } = validatedData;
+      const existingEmail = await storage.getUserByEmail(req.body.email);
+      if (existingEmail) {
+        return res.status(400).send("Email already exists");
+      }
+
+      // Calculate age from date of birth
+      if (req.body.dateOfBirth) {
+        const dob = new Date(req.body.dateOfBirth);
+        const today = new Date();
+        let age = today.getFullYear() - dob.getFullYear();
+        const m = today.getMonth() - dob.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+          age--;
+        }
+        req.body.age = age;
+      }
+
       const user = await storage.createUser({
-        ...userData,
-        password: await hashPassword(userData.password),
+        ...req.body,
+        password: await hashPassword(req.body.password),
       });
 
-      // Login the user after registration
       req.login(user, (err) => {
         if (err) return next(err);
-        // Remove password from response
-        const { password, ...userResponse } = user;
-        res.status(201).json(userResponse);
+        // Remove password from the response
+        const { password, ...userWithoutPassword } = user;
+        res.status(201).json(userWithoutPassword);
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors });
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
       }
       next(error);
     }
   });
 
   app.post("/api/login", (req, res, next) => {
-    passport.authenticate("local", (err, user, info) => {
-      if (err) return next(err);
-      if (!user) return res.status(401).send("Invalid username or password");
+    try {
+      const parsed = loginSchema.parse(req.body);
       
-      req.login(user, (err) => {
+      passport.authenticate("local", (err: any, user: Express.User) => {
         if (err) return next(err);
-        // Remove password from response
-        const { password, ...userResponse } = user;
-        res.status(200).json(userResponse);
-      });
-    })(req, res, next);
+        if (!user) return res.status(401).json({ message: "Invalid credentials" });
+        
+        req.login(user, (err) => {
+          if (err) return next(err);
+          // Remove password from the response
+          const { password, ...userWithoutPassword } = user;
+          res.status(200).json(userWithoutPassword);
+        });
+      })(req, res, next);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      next(error);
+    }
   });
 
   app.post("/api/logout", (req, res, next) => {
@@ -137,8 +149,8 @@ export function setupAuth(app: Express) {
 
   app.get("/api/user", (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
-    // Remove password from response
-    const { password, ...userResponse } = req.user;
-    res.json(userResponse);
+    // Remove password from the response
+    const { password, ...userWithoutPassword } = req.user as SelectUser;
+    res.json(userWithoutPassword);
   });
 }
