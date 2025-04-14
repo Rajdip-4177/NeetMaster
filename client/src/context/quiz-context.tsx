@@ -178,6 +178,52 @@ export const QuizProvider = ({ children }: { children: ReactNode }) => {
         return 'bg-red-500 text-white';
     }
   };
+
+  // Get friendly label for status
+  const getStatusLabel = (status: QuestionStatus) => {
+    switch (status) {
+      case 'answered':
+        return 'Answered';
+      case 'unanswered':
+        return 'Not Answered';
+      case 'reviewed':
+        return 'Marked for Review';
+      case 'answered+reviewed':
+        return 'Answered & Marked for Review';
+      default:
+        return 'Unknown';
+    }
+  };
+
+  // Calculate quiz statistics
+  const getQuizStats = (): QuizStats => {
+    const stats = {
+      total: quizQuestions.length,
+      answered: 0,
+      unanswered: 0,
+      reviewed: 0,
+      answeredAndReviewed: 0
+    };
+
+    quizQuestions.forEach(q => {
+      switch (q.status) {
+        case 'answered':
+          stats.answered++;
+          break;
+        case 'unanswered':
+          stats.unanswered++;
+          break;
+        case 'reviewed':
+          stats.reviewed++;
+          break;
+        case 'answered+reviewed':
+          stats.answeredAndReviewed++;
+          break;
+      }
+    });
+
+    return stats;
+  };
   
   return (
     <QuizContext.Provider
@@ -193,6 +239,8 @@ export const QuizProvider = ({ children }: { children: ReactNode }) => {
         submitQuiz,
         getQuestionStatusColor,
         quizDuration,
+        getQuizStats,
+        getStatusLabel
       }}
     >
       {children}

@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react';
 import { useParams, useLocation, Link } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Clock, CheckCircle, XCircle, AlertCircle, Star, ArrowLeft } from 'lucide-react';
+import { 
+  Clock, CheckCircle, XCircle, AlertCircle, Star, ArrowLeft, 
+  Award, Target, BarChart3, BookmarkIcon, TrendingUp, FileText, 
+  Printer, Download, Share2
+} from 'lucide-react';
 import { subjects } from '@/data/subjects';
 import { chapters } from '@/data/chapters';
 import { questions } from '@/data/questions';
@@ -10,6 +14,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/use-auth';
+import { motion } from 'framer-motion';
+import { Progress } from '@/components/ui/progress';
 
 export default function ResultsPage() {
   const { subject, chapter, testId } = useParams();
@@ -17,21 +23,46 @@ export default function ResultsPage() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [bookmarked, setBookmarked] = useState<number[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'analysis'>('overview');
   
-  // Mock results data
-  const [results, setResults] = useState({
-    score: 68,
-    totalMarks: 100,
-    correctAnswers: 18,
-    totalQuestions: 25,
-    accuracy: 72,
-    timeTaken: '21:45',
-  });
-  
-  // Get filtered quiz questions
+  // Generate more realistic results data based on actual questions
   const filteredQuestions = questions.filter(
     q => q.subjectId === subject && q.testId === parseInt(testId || '0')
   );
+  
+  // Calculate results based on filtered questions
+  const calculateResults = () => {
+    let correctCount = 0;
+    let attemptedCount = 0;
+    
+    filteredQuestions.forEach(q => {
+      if (q.selectedOptionIndex !== null) {
+        attemptedCount++;
+        if (q.selectedOptionIndex === q.correctOptionIndex) {
+          correctCount++;
+        }
+      }
+    });
+    
+    const totalQuestions = filteredQuestions.length;
+    const score = correctCount * 4 - (attemptedCount - correctCount); // +4 for correct, -1 for incorrect
+    const accuracy = totalQuestions > 0 
+      ? Math.round((correctCount / attemptedCount) * 100) 
+      : 0;
+      
+    return {
+      score,
+      totalMarks: totalQuestions * 4,
+      correctAnswers: correctCount,
+      incorrectAnswers: attemptedCount - correctCount,
+      unattempted: totalQuestions - attemptedCount,
+      totalQuestions,
+      accuracy: isNaN(accuracy) ? 0 : accuracy,
+      timeTaken: '21:45', // This would come from the quiz timer in a real app
+    };
+  };
+  
+  const [results] = useState(calculateResults());
   
   // Get current subject and chapter
   const currentSubject = subjects.find(s => s.id === subject);
@@ -46,19 +77,19 @@ export default function ResultsPage() {
         bg: 'bg-[#4CAF50]',
         text: 'text-[#4CAF50]',
         border: 'border-[#4CAF50]',
-        hover: 'hover:bg-[#4CAF50]/90'
+        hover: 'hover:bg-[#43A047]'
       },
       physics: {
         bg: 'bg-[#2196F3]',
         text: 'text-[#2196F3]',
         border: 'border-[#2196F3]',
-        hover: 'hover:bg-[#2196F3]/90'
+        hover: 'hover:bg-[#1E88E5]'
       },
       chemistry: {
         bg: 'bg-[#FF9800]',
         text: 'text-[#FF9800]',
         border: 'border-[#FF9800]',
-        hover: 'hover:bg-[#FF9800]/90'
+        hover: 'hover:bg-[#FB8C00]'
       }
     };
     
@@ -113,144 +144,442 @@ export default function ResultsPage() {
     toggleBookmarkMutation.mutate(questionId);
   };
   
+  // Get performance indicator
+  const getPerformanceLevel = () => {
+    const { accuracy } = results;
+    if (accuracy >= 90) return { label: 'Excellent', color: 'text-green-600' };
+    if (accuracy >= 75) return { label: 'Good', color: 'text-blue-600' };
+    if (accuracy >= 60) return { label: 'Average', color: 'text-yellow-600' };
+    if (accuracy >= 40) return { label: 'Below Average', color: 'text-orange-600' };
+    return { label: 'Needs Improvement', color: 'text-red-600' };
+  };
+  
+  const performance = getPerformanceLevel();
+  
+  // Animation variants
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.05
+      }
+    }
+  };
+  
+  const itemVariants = {
+    hidden: { y: 20, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: { type: "spring", stiffness: 100, damping: 12 }
+    }
+  };
+  
   if (!currentSubject || !currentChapter) {
-    return <div>Loading...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+      </div>
+    );
   }
   
+  const testTitle = chapter.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  
   return (
-    <div className="container mx-auto px-4 py-6">
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+    <div className="container mx-auto px-4 py-6 max-w-7xl">
+      <motion.div 
+        className="bg-white rounded-xl shadow-lg overflow-hidden mb-8"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
         <div className={`${getSubjectColorClass('bg')} text-white p-6`}>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-heading font-semibold">Quiz Results</h2>
-            <div className="flex items-center">
-              <Clock className="h-5 w-5 mr-1" />
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+            <div>
+              <h2 className="text-2xl md:text-3xl font-heading font-semibold">Quiz Results</h2>
+              <p className="text-white text-opacity-90 mt-1">
+                {currentSubject.name} - {testTitle}
+              </p>
+            </div>
+            <div className="mt-4 md:mt-0 flex items-center bg-white bg-opacity-20 px-4 py-2 rounded-lg">
+              <Clock className="h-5 w-5 mr-2" />
               <span>Completed in {results.timeTaken}</span>
             </div>
           </div>
           
           <div className="flex flex-wrap -mx-3">
-            <div className="w-full md:w-1/3 p-3">
-              <div className="bg-white bg-opacity-20 rounded-lg p-4">
-                <h3 className="text-lg font-semibold mb-2">Score</h3>
+            <div className="w-full md:w-1/4 p-3">
+              <div className="bg-white bg-opacity-20 rounded-lg p-4 h-full flex flex-col items-center justify-center text-center">
+                <Award className="h-8 w-8 mb-2 text-yellow-300" />
+                <h3 className="text-lg font-semibold mb-1">Score</h3>
                 <p className="text-3xl font-bold">
-                  {results.score} / {results.totalMarks}
+                  {results.score}
                 </p>
+                <p className="text-sm text-white text-opacity-80">out of {results.totalMarks}</p>
               </div>
             </div>
             
-            <div className="w-full md:w-1/3 p-3">
-              <div className="bg-white bg-opacity-20 rounded-lg p-4">
-                <h3 className="text-lg font-semibold mb-2">Correct Answers</h3>
-                <p className="text-3xl font-bold">
-                  {results.correctAnswers} / {results.totalQuestions}
-                </p>
-              </div>
-            </div>
-            
-            <div className="w-full md:w-1/3 p-3">
-              <div className="bg-white bg-opacity-20 rounded-lg p-4">
-                <h3 className="text-lg font-semibold mb-2">Accuracy</h3>
+            <div className="w-full md:w-1/4 p-3">
+              <div className="bg-white bg-opacity-20 rounded-lg p-4 h-full flex flex-col items-center justify-center text-center">
+                <Target className="h-8 w-8 mb-2 text-green-300" />
+                <h3 className="text-lg font-semibold mb-1">Accuracy</h3>
                 <p className="text-3xl font-bold">{results.accuracy}%</p>
+                <p className="text-sm text-white text-opacity-80">{performance.label}</p>
+              </div>
+            </div>
+            
+            <div className="w-full md:w-1/4 p-3">
+              <div className="bg-white bg-opacity-20 rounded-lg p-4 h-full flex flex-col items-center justify-center text-center">
+                <CheckCircle className="h-8 w-8 mb-2 text-green-300" />
+                <h3 className="text-lg font-semibold mb-1">Correct</h3>
+                <p className="text-3xl font-bold">{results.correctAnswers}</p>
+                <p className="text-sm text-white text-opacity-80">
+                  out of {results.totalQuestions} questions
+                </p>
+              </div>
+            </div>
+            
+            <div className="w-full md:w-1/4 p-3">
+              <div className="bg-white bg-opacity-20 rounded-lg p-4 h-full flex flex-col items-center justify-center text-center">
+                <XCircle className="h-8 w-8 mb-2 text-red-300" />
+                <h3 className="text-lg font-semibold mb-1">Incorrect</h3>
+                <p className="text-3xl font-bold">{results.incorrectAnswers}</p>
+                <p className="text-sm text-white text-opacity-80">
+                  {results.unattempted} unattempted
+                </p>
               </div>
             </div>
           </div>
         </div>
         
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <div className="flex">
+            <button
+              className={`py-3 px-6 font-medium border-b-2 ${
+                activeTab === 'overview' 
+                  ? `${getSubjectColorClass('border')} ${getSubjectColorClass('text')}` 
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+              onClick={() => setActiveTab('overview')}
+            >
+              <span className="flex items-center">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Performance Overview
+              </span>
+            </button>
+            <button
+              className={`py-3 px-6 font-medium border-b-2 ${
+                activeTab === 'analysis' 
+                  ? `${getSubjectColorClass('border')} ${getSubjectColorClass('text')}` 
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+              onClick={() => setActiveTab('analysis')}
+            >
+              <span className="flex items-center">
+                <FileText className="h-4 w-4 mr-2" />
+                Question Analysis
+              </span>
+            </button>
+          </div>
+        </div>
+        
         <div className="p-6">
-          <h3 className="text-xl font-heading font-semibold mb-4">Question Analysis</h3>
-          
-          {/* Question Analysis */}
-          <div className="space-y-6">
-            {filteredQuestions.map((question, index) => (
-              <Card key={question.id} className="overflow-hidden">
-                <CardContent className="p-4">
-                  <div className="flex justify-between mb-3">
-                    <span className="text-sm font-medium">Question {index + 1}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={`text-yellow-500 hover:text-yellow-600 p-1 h-auto`}
-                      onClick={() => toggleBookmark(question.id)}
-                    >
-                      {bookmarked.includes(question.id) ? (
-                        <Star className="h-5 w-5 fill-yellow-500" />
-                      ) : (
-                        <Star className="h-5 w-5" />
-                      )}
-                    </Button>
+          {activeTab === 'overview' ? (
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+            >
+              <motion.div variants={itemVariants} className="mb-8">
+                <h3 className="text-xl font-heading font-semibold mb-4">Performance Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-gray-50 rounded-lg p-5 border border-gray-100">
+                    <h4 className="text-lg font-medium mb-3">Question Distribution</h4>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="text-sm font-medium text-green-600">Correct</span>
+                          <span className="text-sm font-medium">{results.correctAnswers}/{results.totalQuestions}</span>
+                        </div>
+                        <Progress value={(results.correctAnswers / results.totalQuestions) * 100} className="h-2 bg-gray-200" indicatorClassName="bg-green-500" />
+                      </div>
+                      
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="text-sm font-medium text-red-600">Incorrect</span>
+                          <span className="text-sm font-medium">{results.incorrectAnswers}/{results.totalQuestions}</span>
+                        </div>
+                        <Progress value={(results.incorrectAnswers / results.totalQuestions) * 100} className="h-2 bg-gray-200" indicatorClassName="bg-red-500" />
+                      </div>
+                      
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="text-sm font-medium text-gray-600">Unattempted</span>
+                          <span className="text-sm font-medium">{results.unattempted}/{results.totalQuestions}</span>
+                        </div>
+                        <Progress value={(results.unattempted / results.totalQuestions) * 100} className="h-2 bg-gray-200" indicatorClassName="bg-gray-500" />
+                      </div>
+                    </div>
                   </div>
                   
-                  <h4 className="text-lg font-medium mb-3">{question.questionText}</h4>
+                  <div className="bg-gray-50 rounded-lg p-5 border border-gray-100">
+                    <h4 className="text-lg font-medium mb-3">Score Analysis</h4>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-100">
+                        <div className="flex items-center">
+                          <div className="bg-green-100 p-2 rounded-full mr-3">
+                            <TrendingUp className="h-5 w-5 text-green-600" />
+                          </div>
+                          <div>
+                            <h5 className="font-medium">Correct Answers</h5>
+                            <p className="text-sm text-gray-600">+{results.correctAnswers * 4} points</p>
+                          </div>
+                        </div>
+                        <span className="text-xl font-bold text-green-600">+{results.correctAnswers * 4}</span>
+                      </div>
+                      
+                      <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100">
+                        <div className="flex items-center">
+                          <div className="bg-red-100 p-2 rounded-full mr-3">
+                            <TrendingUp className="h-5 w-5 text-red-600 transform rotate-180" />
+                          </div>
+                          <div>
+                            <h5 className="font-medium">Incorrect Answers</h5>
+                            <p className="text-sm text-gray-600">-{results.incorrectAnswers} points</p>
+                          </div>
+                        </div>
+                        <span className="text-xl font-bold text-red-600">-{results.incorrectAnswers}</span>
+                      </div>
+                      
+                      <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-100">
+                        <div className="flex items-center">
+                          <div className="bg-blue-100 p-2 rounded-full mr-3">
+                            <Award className="h-5 w-5 text-blue-600" />
+                          </div>
+                          <div>
+                            <h5 className="font-medium">Total Score</h5>
+                            <p className="text-sm text-gray-600">Out of {results.totalMarks}</p>
+                          </div>
+                        </div>
+                        <span className="text-xl font-bold text-blue-600">{results.score}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+              
+              <motion.div variants={itemVariants} className="mt-10">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-heading font-semibold">Recommended Actions</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-green-50 rounded-lg p-4 border border-green-100">
+                    <div className="flex items-start">
+                      <div className="bg-green-100 p-2 rounded-full mr-3">
+                        <BookmarkIcon className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <h5 className="font-medium">Review Bookmarked Questions</h5>
+                        <p className="text-sm text-gray-600 mt-1">
+                          Focus on the questions you've bookmarked for review to improve your understanding.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                   
-                  <div className="space-y-2 mb-4">
-                    {question.options.map((option, optionIndex) => (
-                      <div
-                        key={optionIndex}
-                        className={`
-                          flex items-start p-2 rounded-lg
-                          ${optionIndex === question.correctOptionIndex
-                            ? 'bg-green-100 border border-green-500'
-                            : optionIndex === question.selectedOptionIndex && optionIndex !== question.correctOptionIndex
-                              ? 'bg-red-100 border border-red-500'
-                              : ''
-                          }
-                        `}
-                      >
-                        <span className="font-medium mr-2">
-                          {String.fromCharCode(65 + optionIndex)}.
-                        </span>
-                        <div>
-                          {option}
-                          {optionIndex === question.correctOptionIndex && (
-                            <span className="ml-2 text-green-500 font-medium flex items-center">
-                              <CheckCircle className="h-4 w-4 mr-1" />
-                              Correct Answer
+                  <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                    <div className="flex items-start">
+                      <div className="bg-blue-100 p-2 rounded-full mr-3">
+                        <FileText className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <h5 className="font-medium">Practice More Tests</h5>
+                        <p className="text-sm text-gray-600 mt-1">
+                          Take more practice tests on this chapter to reinforce your knowledge and improve scores.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                    <div className="flex items-start">
+                      <div className="bg-purple-100 p-2 rounded-full mr-3">
+                        <AlertCircle className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <h5 className="font-medium">Focus on Weak Areas</h5>
+                        <p className="text-sm text-gray-600 mt-1">
+                          Pay special attention to concepts where you made mistakes or left questions unanswered.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+              
+              <motion.div variants={itemVariants} className="flex justify-between mt-10">
+                <div className="flex space-x-2">
+                  <Button variant="outline" className="flex items-center">
+                    <Printer className="h-4 w-4 mr-1" />
+                    Print Results
+                  </Button>
+                  <Button variant="outline" className="flex items-center">
+                    <Download className="h-4 w-4 mr-1" />
+                    Download PDF
+                  </Button>
+                  <Button variant="outline" className="flex items-center">
+                    <Share2 className="h-4 w-4 mr-1" />
+                    Share
+                  </Button>
+                </div>
+                
+                <div className="flex space-x-2">
+                  <Link href={`/subject/${subject}/${chapter}`}>
+                    <Button variant="outline" className="flex items-center">
+                      <ArrowLeft className="h-4 w-4 mr-1" />
+                      Back to Chapter
+                    </Button>
+                  </Link>
+                  <Link href={`/subject/${subject}/${chapter}/test/${testId}`}>
+                    <Button className={`${getSubjectColorClass('bg')} ${getSubjectColorClass('hover')} text-white`}>
+                      Retry Quiz
+                    </Button>
+                  </Link>
+                </div>
+              </motion.div>
+            </motion.div>
+          ) : (
+            <motion.div 
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              className="space-y-6"
+            >
+              <motion.h3 variants={itemVariants} className="text-xl font-heading font-semibold mb-4">
+                Question Analysis
+              </motion.h3>
+              
+              {filteredQuestions.map((question, index) => (
+                <motion.div 
+                  key={question.id} 
+                  variants={itemVariants}
+                >
+                  <Card className="overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                    <CardContent className="p-5">
+                      <div className="flex justify-between mb-3">
+                        <div className="flex items-center space-x-2">
+                          <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-md text-sm font-medium">
+                            Question {index + 1}
+                          </span>
+                          {question.selectedOptionIndex === question.correctOptionIndex ? (
+                            <span className="bg-green-100 text-green-700 px-2 py-1 rounded-md text-sm font-medium flex items-center">
+                              <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                              Correct
                             </span>
-                          )}
-                          {optionIndex === question.selectedOptionIndex && optionIndex !== question.correctOptionIndex && (
-                            <span className="ml-2 text-red-500 font-medium flex items-center">
-                              <XCircle className="h-4 w-4 mr-1" />
-                              Your Answer
+                          ) : question.selectedOptionIndex !== null ? (
+                            <span className="bg-red-100 text-red-700 px-2 py-1 rounded-md text-sm font-medium flex items-center">
+                              <XCircle className="h-3.5 w-3.5 mr-1" />
+                              Incorrect
+                            </span>
+                          ) : (
+                            <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-md text-sm font-medium">
+                              Not Attempted
                             </span>
                           )}
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-yellow-500 hover:text-yellow-600 p-1 h-auto"
+                          onClick={() => toggleBookmark(question.id)}
+                        >
+                          {bookmarked.includes(question.id) ? (
+                            <Star className="h-5 w-5 fill-yellow-500" />
+                          ) : (
+                            <Star className="h-5 w-5" />
+                          )}
+                        </Button>
                       </div>
-                    ))}
-                  </div>
-                  
-                  {question.explanation && (
-                    <div className="bg-gray-50 p-3 rounded-lg">
-                      <h5 className="font-medium mb-2 flex items-center">
-                        <AlertCircle className="h-4 w-4 mr-1 text-primary" />
-                        Explanation:
-                      </h5>
-                      <p className="text-gray-700">{question.explanation}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          
-          <div className="mt-8 flex justify-between">
-            <Link href={`/subject/${subject}/${chapter}`}>
-              <Button 
-                variant="link" 
-                className={`${getSubjectColorClass('text')} p-0 flex items-center`}
-              >
-                <ArrowLeft className="h-4 w-4 mr-1" />
-                Back to Chapter
-              </Button>
-            </Link>
-            <Link href={`/subject/${subject}/${chapter}/test/${testId}`}>
-              <Button className={`${getSubjectColorClass('bg')} ${getSubjectColorClass('hover')} text-white`}>
-                Retry Quiz
-              </Button>
-            </Link>
-          </div>
+                      
+                      <h4 className="text-lg font-medium mb-4">{question.questionText}</h4>
+                      
+                      <div className="space-y-2 mb-4">
+                        {question.options.map((option, optionIndex) => (
+                          <div
+                            key={optionIndex}
+                            className={`
+                              flex items-start p-3 rounded-lg border
+                              ${optionIndex === question.correctOptionIndex
+                                ? 'bg-green-50 border-green-200'
+                                : optionIndex === question.selectedOptionIndex && optionIndex !== question.correctOptionIndex
+                                  ? 'bg-red-50 border-red-200'
+                                  : 'border-gray-200 hover:bg-gray-50'
+                              }
+                            `}
+                          >
+                            <span className="font-medium text-gray-700 mr-2 bg-gray-100 h-6 w-6 rounded-full flex items-center justify-center text-sm">
+                              {String.fromCharCode(65 + optionIndex)}
+                            </span>
+                            <div className="flex-1">
+                              <div className="flex justify-between">
+                                <div>{option}</div>
+                                <div className="flex items-center ml-4">
+                                  {optionIndex === question.correctOptionIndex && (
+                                    <span className="text-green-600 font-medium flex items-center text-sm">
+                                      <CheckCircle className="h-4 w-4 mr-1" />
+                                      Correct
+                                    </span>
+                                  )}
+                                  {optionIndex === question.selectedOptionIndex && optionIndex !== question.correctOptionIndex && (
+                                    <span className="text-red-600 font-medium flex items-center text-sm">
+                                      <XCircle className="h-4 w-4 mr-1" />
+                                      Your Answer
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {question.explanation && (
+                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                          <h5 className="font-medium mb-2 flex items-center text-blue-700">
+                            <AlertCircle className="h-4 w-4 mr-1" />
+                            Explanation
+                          </h5>
+                          <p className="text-gray-700">{question.explanation}</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+              
+              <motion.div variants={itemVariants} className="mt-8 flex justify-between">
+                <Link href={`/subject/${subject}/${chapter}`}>
+                  <Button 
+                    variant="link" 
+                    className={`${getSubjectColorClass('text')} p-0 flex items-center`}
+                  >
+                    <ArrowLeft className="h-4 w-4 mr-1" />
+                    Back to Chapter
+                  </Button>
+                </Link>
+                <Link href={`/subject/${subject}/${chapter}/test/${testId}`}>
+                  <Button className={`${getSubjectColorClass('bg')} ${getSubjectColorClass('hover')} text-white`}>
+                    Retry Quiz
+                  </Button>
+                </Link>
+              </motion.div>
+            </motion.div>
+          )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
