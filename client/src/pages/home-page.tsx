@@ -1,9 +1,27 @@
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { subjects } from "@/data/subjects";
-import { FaFlask, FaDna, FaAtom, FaBook, FaTasks, FaQuestionCircle, FaChalkboardTeacher, FaChartLine, FaRegCheckCircle, FaAward } from "react-icons/fa";
+import { lazy, Suspense } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+
+// Dynamically import React icons
+const IconComponents = {
+  FaFlask: lazy(() => import('react-icons/fa').then(module => ({ default: module.FaFlask }))),
+  FaDna: lazy(() => import('react-icons/fa').then(module => ({ default: module.FaDna }))),
+  FaAtom: lazy(() => import('react-icons/fa').then(module => ({ default: module.FaAtom }))),
+  FaBook: lazy(() => import('react-icons/fa').then(module => ({ default: module.FaBook }))),
+  FaTasks: lazy(() => import('react-icons/fa').then(module => ({ default: module.FaTasks }))),
+  FaQuestionCircle: lazy(() => import('react-icons/fa').then(module => ({ default: module.FaQuestionCircle }))),
+  FaChalkboardTeacher: lazy(() => import('react-icons/fa').then(module => ({ default: module.FaChalkboardTeacher }))),
+  FaChartLine: lazy(() => import('react-icons/fa').then(module => ({ default: module.FaChartLine }))),
+  FaRegCheckCircle: lazy(() => import('react-icons/fa').then(module => ({ default: module.FaRegCheckCircle }))),
+  FaAward: lazy(() => import('react-icons/fa').then(module => ({ default: module.FaAward }))),
+  Loader2: lazy(() => import('lucide-react').then(module => ({ default: module.Loader2 }))),
+};
+
+// Icon fallback
+const IconFallback = () => <div className="w-6 h-6 bg-gray-200 rounded-full animate-pulse"></div>;
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -33,16 +51,27 @@ export default function HomePage() {
   };
 
   const getSubjectIcon = (subjectId: string) => {
+    let IconComponent;
+    
     switch (subjectId) {
       case "biology":
-        return <FaDna className="h-14 w-14" />;
+        IconComponent = IconComponents.FaDna;
+        break;
       case "physics":
-        return <FaAtom className="h-14 w-14" />;
+        IconComponent = IconComponents.FaAtom;
+        break;
       case "chemistry":
-        return <FaFlask className="h-14 w-14" />;
+        IconComponent = IconComponents.FaFlask;
+        break;
       default:
-        return <FaBook className="h-14 w-14" />;
+        IconComponent = IconComponents.FaBook;
     }
+    
+    return (
+      <Suspense fallback={<IconFallback />}>
+        <IconComponent className="h-14 w-14" />
+      </Suspense>
+    );
   };
 
   const fadeInUp = {
@@ -79,14 +108,11 @@ export default function HomePage() {
             className="text-center mb-12"
             variants={fadeInUp}
           >
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.8, type: "spring" }}
-              className="inline-block mb-6"
-            >
+            <motion.div>
               <div className="flex items-center justify-center w-24 h-24 mx-auto bg-gradient-to-br from-primary to-primary/80 rounded-full shadow-lg">
-                <FaChalkboardTeacher className="h-12 w-12 text-white" />
+                <Suspense fallback={<IconFallback />}>
+                  <IconComponents.FaChalkboardTeacher className="h-12 w-12 text-white" />
+                </Suspense>
               </div>
             </motion.div>
 
@@ -142,10 +168,10 @@ export default function HomePage() {
             animate="visible"
           >
             {[
-              { icon: <FaBook />, count: "10k+", label: "Questions" },
-              { icon: <FaChartLine />, count: "100+", label: "Tests" },
-              { icon: <FaRegCheckCircle />, count: "500+", label: "Concepts" },
-              { icon: <FaAward />, count: "95%", label: "Success Rate" }
+              { icon: <Suspense fallback={<IconFallback />}><IconComponents.FaBook /></Suspense>, count: "10k+", label: "Questions" },
+              { icon: <Suspense fallback={<IconFallback />}><IconComponents.FaChartLine /></Suspense>, count: "100+", label: "Tests" },
+              { icon: <Suspense fallback={<IconFallback />}><IconComponents.FaRegCheckCircle /></Suspense>, count: "500+", label: "Concepts" },
+              { icon: <Suspense fallback={<IconFallback />}><IconComponents.FaAward /></Suspense>, count: "95%", label: "Success Rate" }
             ].map((stat, index) => (
               <motion.div
                 key={index}
@@ -233,41 +259,42 @@ export default function HomePage() {
                   transition: { duration: 0.3, ease: "easeOut" }
                 }}
               >
-                <div 
-                  className={`h-52 flex items-center justify-center bg-gradient-to-r ${colors.gradient} group-hover:bg-gradient-to-r group-hover:${colors.hoverGradient} transition-all duration-500 relative overflow-hidden`}
-                >
-                  {/* Animated circles in background */}
-                  <div className="absolute inset-0 overflow-hidden opacity-20">
-                    <div className="absolute -top-10 -left-10 w-40 h-40 bg-white rounded-full"></div>
-                    <div className="absolute top-20 right-10 w-20 h-20 bg-white rounded-full"></div>
-                    <div className="absolute bottom-0 left-20 w-32 h-32 bg-white rounded-full"></div>
+                <Link href={user ? `/subject/${subject.id}` : "/auth"}>
+                  <div 
+                    className={`h-52 flex items-center justify-center bg-gradient-to-r ${colors.gradient} group-hover:bg-gradient-to-r group-hover:${colors.hoverGradient} transition-all duration-500 relative overflow-hidden cursor-pointer`}
+                  >
+                    {/* Animated circles in background */}
+                    <div className="absolute inset-0 overflow-hidden opacity-20">
+                      <div className="absolute -top-10 -left-10 w-40 h-40 bg-white rounded-full"></div>
+                      <div className="absolute top-20 right-10 w-20 h-20 bg-white rounded-full"></div>
+                      <div className="absolute bottom-0 left-20 w-32 h-32 bg-white rounded-full"></div>
+                    </div>
+                    
+                    <motion.div 
+                      className="text-white text-center z-10"
+                      initial={{ scale: 1 }}
+                      whileHover={{ scale: 1.1, rotate: 5 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      {getSubjectIcon(subject.id)}
+                      <h3 className="text-2xl font-bold mt-4 drop-shadow-md">{subject.name}</h3>
+                    </motion.div>
                   </div>
                   
-                  <motion.div 
-                    className="text-white text-center z-10"
-                    initial={{ scale: 1 }}
-                    whileHover={{ scale: 1.1, rotate: 5 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    {getSubjectIcon(subject.id)}
-                    <h3 className="text-2xl font-bold mt-4 drop-shadow-md">{subject.name}</h3>
-                  </motion.div>
-                </div>
-                
-                <div className={`p-6 ${colors.light} h-full flex flex-col`}>
-                  <h2 className={`text-2xl font-heading font-bold mb-3 ${colors.text}`}>
-                    12+ Chapters
-                  </h2>
-                  <p className="text-gray-700 mb-6 flex-grow">
-                    Complete {subject.name.toLowerCase()} curriculum for NEET with comprehensive notes, NCERT solutions, and topic-wise questions.
-                  </p>
-                  <Link 
-                    href={user ? `/subject/${subject.id}` : "/auth"}
-                    className={`px-6 py-3 rounded-xl inline-block text-white font-medium text-center ${colors.button} shadow-md hover:shadow-lg transition-all duration-300 w-full`}
-                  >
-                    Explore {subject.name}
-                  </Link>
-                </div>
+                  <div className={`p-6 ${colors.light} h-full flex flex-col cursor-pointer`}>
+                    <h2 className={`text-2xl font-heading font-bold mb-3 ${colors.text}`}>
+                      {subject.id === "biology" ? "38" : subject.id === "chemistry" ? "30" : "20"}+ Chapters
+                    </h2>
+                    <p className="text-gray-700 mb-6 flex-grow">
+                      Complete {subject.name.toLowerCase()} curriculum for NEET with comprehensive notes, NCERT solutions, and topic-wise questions.
+                    </p>
+                    <span 
+                      className={`mb-3 px-6 py-3 rounded-xl block text-white font-medium text-center ${colors.button} shadow-md hover:shadow-lg transition-all duration-300 w-full text-lg`}
+                    >
+                      Start Learning
+                    </span>
+                  </div>
+                </Link>
               </motion.div>
             );
           })}
@@ -293,19 +320,19 @@ export default function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {[
               {
-                icon: <FaBook className="h-8 w-8 text-blue-600" />,
+                icon: <Suspense fallback={<IconFallback />}><IconComponents.FaBook className="h-8 w-8 text-blue-600" /></Suspense>,
                 color: "blue",
                 title: "Comprehensive Study Material",
                 description: "Access detailed notes, NCERT solutions, and study guides for all subjects. Our content is prepared by expert educators.",
               },
               {
-                icon: <FaQuestionCircle className="h-8 w-8 text-green-600" />,
+                icon: <Suspense fallback={<IconFallback />}><IconComponents.FaQuestionCircle className="h-8 w-8 text-green-600" /></Suspense>,
                 color: "green",
                 title: "Interactive Practice Tests",
                 description: "Test your knowledge with our adaptive quizzes. Get instant feedback and detailed explanations for each question.",
               },
               {
-                icon: <FaTasks className="h-8 w-8 text-orange-600" />,
+                icon: <Suspense fallback={<IconFallback />}><IconComponents.FaTasks className="h-8 w-8 text-orange-600" /></Suspense>,
                 color: "orange",
                 title: "Personal Progress Tracking",
                 description: "Organize your study schedule, track your progress, and identify improvement areas with our analytics dashboard.",

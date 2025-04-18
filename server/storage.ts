@@ -14,6 +14,14 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, user: Partial<User>): Promise<User | undefined>;
 
+  // Admin methods
+  getAllUsers(): Promise<User[]>;
+  getUserById(id: number): Promise<User | undefined>;
+  deleteUser(id: number): Promise<boolean>;
+  getUserCount(): Promise<number>;
+  getAllQuizAttempts(): Promise<QuizAttempt[]>;
+  getTaskCount(): Promise<number>;
+
   // Task methods
   getTasks(userId: number): Promise<Task[]>;
   getTask(id: number): Promise<Task | undefined>;

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation, Link } from "wouter";
-import { ArrowLeft, Clock } from "lucide-react";
+import { ArrowLeft, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
@@ -57,12 +57,115 @@ export default function ChapterPage() {
     return colors[currentSubject.id as keyof typeof colors][type];
   };
 
-  // Mock tests data
-  const mockTests = [
-    { id: 1, title: "Cell Structure & Function", description: "Test your knowledge about cell structure, organelles and their functions." },
-    { id: 2, title: "Cell Membrane & Transport", description: "Evaluate your understanding of cell membrane structure and transport mechanisms." },
-    { id: 3, title: "Cell Division", description: "Test your knowledge of mitosis, meiosis and cell cycle regulation." },
-  ];
+  // Function to get a more detailed description based on quiz ID and chapter information
+  const getQuizDescription = (testId: number, subject?: string, chapterName?: string) => {
+    const subjectPrefix = subject ? {
+      'biology': 'Biological ',
+      'chemistry': 'Chemical ',
+      'physics': 'Physical '
+    }[subject] || '' : '';
+    
+    const chapterContext = chapterName ? ` on ${chapterName}` : '';
+    
+    switch(testId) {
+      case 1:
+        return `Focus on fundamental ${subjectPrefix}concepts and basic definitions${chapterContext}.`;
+      case 2:
+        return `Test your understanding of intermediate-level concepts and practical applications${chapterContext}.`;
+      case 3:
+        return `Advanced problems requiring deep conceptual understanding${chapterContext}.`;
+      case 4:
+        return `Questions focused on numerical problems and calculations${chapterContext}.`;
+      case 5:
+        return `Test covering relationships between different concepts and their interconnections${chapterContext}.`;
+      case 6:
+        return `Application-based questions connecting theory to real-world scenarios${chapterContext}.`;
+      case 7:
+        return `Diagram-based questions testing visual understanding${chapterContext}.`;
+      case 8:
+        return `Mixed-format quiz combining multiple question types${chapterContext}.`;
+      case 9:
+        return `NEET-style questions following the exact examination pattern${chapterContext}.`;
+      case 10:
+        return `Comprehensive review covering all major concepts${chapterContext}.`;
+      default:
+        return `Test your knowledge about key concepts covered${chapterContext}.`;
+    }
+  };
+
+  // Function to get quiz title based on quiz ID
+  const getQuizTitle = (testId: number) => {
+    return `Quiz ${testId}`;
+  };
+
+  // Function to get question count based on quiz ID
+  const getQuestionCount = (testId: number, subjectId?: string) => {
+    // Different quiz types have different question counts
+    const baseCount = {
+      1: 15, // Fundamentals
+      2: 20, // Intermediate 
+      3: 25, // Advanced
+      4: 20, // Numerical
+      5: 15, // Connections
+      6: 20, // Applications
+      7: 15, // Visual
+      8: 20, // Mixed
+      9: 30, // NEET style
+      10: 25, // Review
+    }[testId] || 20;
+    
+    // Physics quizzes have slightly more questions
+    return subjectId === 'physics' ? baseCount + 5 : baseCount;
+  };
+  
+  // Function to get quiz duration in minutes
+  const getQuizDuration = (testId: number, subjectId?: string) => {
+    const questionCount = getQuestionCount(testId, subjectId);
+    // Physics and Chemistry quizzes get more time per question than Biology
+    const minutesPerQuestion = subjectId === 'biology' ? 1 : 1.5;
+    return Math.round(questionCount * minutesPerQuestion);
+  };
+
+  // Generate 10 quizzes for each chapter
+  const generateQuizzes = () => {
+    const quizzes = [];
+    for (let i = 1; i <= 10; i++) {
+      quizzes.push({
+        id: i,
+        title: getQuizTitle(i),
+        description: getQuizDescription(i, currentSubject?.id, currentChapter?.name),
+        questionCount: getQuestionCount(i, currentSubject?.id),
+        duration: getQuizDuration(i, currentSubject?.id)
+      });
+    }
+    return quizzes;
+  };
+
+  // Mock tests data - now generated dynamically
+  const mockTests = generateQuizzes();
+
+  // Pagination for quizzes
+  const [currentPage, setCurrentPage] = useState(1);
+  const quizzesPerPage = 6;
+  const totalPages = Math.ceil(mockTests.length / quizzesPerPage);
+  
+  // Get current quizzes
+  const indexOfLastQuiz = currentPage * quizzesPerPage;
+  const indexOfFirstQuiz = indexOfLastQuiz - quizzesPerPage;
+  const currentQuizzes = mockTests.slice(indexOfFirstQuiz, indexOfLastQuiz);
+  
+  // Change page
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+  
+  const goToPreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -128,8 +231,8 @@ export default function ChapterPage() {
             </div>
 
             <TabsContent value="test" className="pt-2">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {mockTests.map((test) => (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                {currentQuizzes.map((test) => (
                   <div 
                     key={test.id}
                     className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow"
@@ -140,7 +243,7 @@ export default function ChapterPage() {
                     <div className="flex items-center text-sm text-gray-500 mb-4">
                       <Clock className="h-5 w-5 mr-1" />
                       <span>
-                        25 Questions • {subject === "physics" ? "35" : "25"} minutes
+                        {test.questionCount} Questions • {test.duration} minutes
                       </span>
                     </div>
                     <p className="text-gray-600 mb-4">
@@ -156,6 +259,37 @@ export default function ChapterPage() {
                   </div>
                 ))}
               </div>
+              
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex justify-center items-center mt-6 space-x-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={goToPreviousPage} 
+                    disabled={currentPage === 1}
+                    className="flex items-center"
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Previous
+                  </Button>
+                  
+                  <div className="text-sm text-gray-600 px-3">
+                    Page {currentPage} of {totalPages}
+                  </div>
+                  
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={goToNextPage} 
+                    disabled={currentPage === totalPages}
+                    className="flex items-center"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="notes" className="pt-2">

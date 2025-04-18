@@ -76,7 +76,7 @@ export default function SubjectPage() {
             {subjectChapters.map((chapter) => (
               <div 
                 key={chapter.id}
-                className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow"
+                className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow flex flex-col h-full"
               >
                 <h2 className="text-xl font-heading font-semibold mb-3">
                   {chapter.name}
@@ -85,10 +85,10 @@ export default function SubjectPage() {
                   <span>{chapter.questionCount} Questions</span>
                   <span>{chapter.notesCount} Study Notes</span>
                 </div>
-                <p className="text-gray-600 mb-4 line-clamp-2">
+                <p className="text-gray-600 mb-4 line-clamp-2 flex-grow">
                   {chapter.description}
                 </p>
-                <div className="flex flex-col sm:flex-row gap-3 mt-5">
+                <div className="flex flex-col sm:flex-row gap-3 mt-auto">
                   <Link href={`/subject/${subject}/${chapter.id}`} className="flex-1">
                     <Button 
                       className={`w-full ${getSubjectColorClass('bg')} ${getSubjectColorClass('hover')} text-white flex items-center justify-center`}

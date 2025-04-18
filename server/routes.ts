@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
-import { insertTaskSchema, insertBookmarkSchema, insertQuizAttemptSchema } from "@shared/schema";
+import { insertTaskSchema, insertBookmarkSchema, insertQuizAttemptSchema, insertQuestionSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 
@@ -12,6 +12,14 @@ const isAuthenticated = (req: Request, res: Response, next: Function) => {
     return next();
   }
   res.status(401).json({ message: "Unauthorized" });
+};
+
+// Middleware to check if user is an admin
+const isAdmin = (req: Request, res: Response, next: Function) => {
+  if (req.isAuthenticated() && (req.user as Express.User).isAdmin) {
+    return next();
+  }
+  res.status(403).json({ message: "Forbidden: Admin access required" });
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -191,6 +199,198 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const validationError = fromZodError(error);
         return res.status(400).json({ message: validationError.message });
       }
+      next(error);
+    }
+  });
+
+  // Admin routes
+  app.get("/api/admin/users", isAdmin, async (req, res, next) => {
+    try {
+      const users = await storage.getAllUsers();
+      // Remove passwords from response
+      const usersWithoutPasswords = users.map(({ password, ...user }) => user);
+      res.json(usersWithoutPasswords);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/admin/users/:id", isAdmin, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const user = await storage.getUserById(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Remove password from response
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/admin/users/:id", isAdmin, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const user = await storage.getUserById(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const updatedUser = await storage.updateUser(userId, req.body);
+      
+      // Remove password from response
+      const { password, ...userWithoutPassword } = updatedUser;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/admin/users/:id", isAdmin, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const user = await storage.getUserById(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Don't allow admins to delete themselves
+      if (userId === (req.user as Express.User).id) {
+        return res.status(400).json({ message: "Cannot delete your own admin account" });
+      }
+      
+      const success = await storage.deleteUser(userId);
+      if (success) {
+        res.status(204).end();
+      } else {
+        res.status(500).json({ message: "Failed to delete user" });
+      }
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/admin/users/:id/toggle-admin", isAdmin, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const user = await storage.getUserById(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Don't allow admins to remove their own admin status
+      if (userId === (req.user as Express.User).id) {
+        return res.status(400).json({ message: "Cannot remove your own admin status" });
+      }
+      
+      const updatedUser = await storage.updateUser(userId, { isAdmin: !user.isAdmin });
+      
+      // Remove password from response
+      const { password, ...userWithoutPassword } = updatedUser;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Dashboard analytics for admin
+  app.get("/api/admin/analytics", isAdmin, async (req, res, next) => {
+    try {
+      const [userCount, quizAttempts, taskCount] = await Promise.all([
+        storage.getUserCount(),
+        storage.getAllQuizAttempts(),
+        storage.getTaskCount()
+      ]);
+      
+      res.json({
+        userCount,
+        quizAttemptCount: quizAttempts.length,
+        taskCount,
+        recentQuizAttempts: quizAttempts.slice(-10), // Last 10 attempts
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Admin question management routes
+  app.get("/api/admin/questions", isAdmin, async (req, res, next) => {
+    try {
+      const questions = await storage.getAllQuestions();
+      res.json(questions);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/admin/questions/:id", isAdmin, async (req, res, next) => {
+    try {
+      const questionId = parseInt(req.params.id);
+      const question = await storage.getQuestionById(questionId);
+      
+      if (!question) {
+        return res.status(404).json({ message: "Question not found" });
+      }
+      
+      res.json(question);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/admin/questions", isAdmin, async (req, res, next) => {
+    try {
+      const questionData = insertQuestionSchema.parse(req.body);
+      const question = await storage.createQuestion(questionData);
+      res.status(201).json(question);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      next(error);
+    }
+  });
+
+  app.put("/api/admin/questions/:id", isAdmin, async (req, res, next) => {
+    try {
+      const questionId = parseInt(req.params.id);
+      const question = await storage.getQuestionById(questionId);
+      
+      if (!question) {
+        return res.status(404).json({ message: "Question not found" });
+      }
+      
+      const updatedQuestion = await storage.updateQuestion(questionId, req.body);
+      res.json(updatedQuestion);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/admin/questions/:id", isAdmin, async (req, res, next) => {
+    try {
+      const questionId = parseInt(req.params.id);
+      const question = await storage.getQuestionById(questionId);
+      
+      if (!question) {
+        return res.status(404).json({ message: "Question not found" });
+      }
+      
+      const success = await storage.deleteQuestion(questionId);
+      if (success) {
+        res.status(204).end();
+      } else {
+        res.status(500).json({ message: "Failed to delete question" });
+      }
+    } catch (error) {
       next(error);
     }
   });

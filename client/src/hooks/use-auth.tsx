@@ -25,9 +25,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     data: user,
     error,
     isLoading,
+    refetch
   } = useQuery<SelectUser | null, Error>({
     queryKey: ["/api/user"],
     queryFn: getQueryFn({ on401: "returnNull" }),
+    retry: 1,
+    onError: (error) => {
+      console.error("Authentication error:", error);
+      // Only show toast for non-401 errors (actual errors, not just "not logged in")
+      if (!error.message.includes("401")) {
+        toast({
+          title: "Authentication Error",
+          description: "Failed to fetch user data. Please try refreshing the page.",
+          variant: "destructive",
+        });
+      }
+    }
   });
 
   const loginMutation = useMutation({

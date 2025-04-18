@@ -1,0 +1,45 @@
+{
+  "short_name": "NEET Master",
+  "name": "NEET Master - Your ultimate NEET preparation app",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "logo512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    },
+    {
+      "src": "maskable_icon.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#4CAF50",
+  "background_color": "#ffffff",
+  "orientation": "portrait",
+  "description": "Comprehensive NEET preparation app with chapter-wise tests and analysis",
+  "screenshots": [
+    {
+      "src": "screenshot1.png",
+      "type": "image/png",
+      "sizes": "540x720"
+    },
+    {
+      "src": "screenshot2.png",
+      "type": "image/png",
+      "sizes": "540x720"
+    }
+  ]
+} 

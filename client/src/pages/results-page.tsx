@@ -17,6 +17,27 @@ import { useAuth } from '@/hooks/use-auth';
 import { motion } from 'framer-motion';
 import { Progress } from '@/components/ui/progress';
 
+// Define the structure of quiz results from localStorage
+interface StoredQuizResults {
+  score: number;
+  totalQuestions: number;
+  correctAnswers: number;
+  incorrectAnswers: number;
+  unattempted: number;
+  timeTaken: number;
+  completedAt: string;
+  subject: string;
+  testId: string;
+  questionData: {
+    id: number;
+    questionText: string;
+    options: string[];
+    correctOption: number;
+    selectedOption: number | null;
+    explanation?: string;
+  }[];
+}
+
 export default function ResultsPage() {
   const { subject, chapter, testId } = useParams();
   const [, navigate] = useLocation();
@@ -24,14 +45,38 @@ export default function ResultsPage() {
   const { user } = useAuth();
   const [bookmarked, setBookmarked] = useState<number[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'analysis'>('overview');
+  const [quizResults, setQuizResults] = useState<StoredQuizResults | null>(null);
   
-  // Generate more realistic results data based on actual questions
-  const filteredQuestions = questions.filter(
-    q => q.subjectId === subject && q.testId === parseInt(testId || '0')
-  );
+  // Safely handle chapter value
+  const safeChapter = chapter || '';
   
-  // Calculate results based on filtered questions
+  // Load quiz results from localStorage
+  useEffect(() => {
+    try {
+      const storedResults = localStorage.getItem('quizResults');
+      if (storedResults) {
+        const parsedResults = JSON.parse(storedResults) as StoredQuizResults;
+        
+        // Verify that this is the correct quiz result (matching subject and testId)
+        if (parsedResults.subject === subject && parsedResults.testId === testId) {
+          setQuizResults(parsedResults);
+        } else {
+          // If there's a mismatch, we'll fall back to calculated results
+          console.log('Quiz results in localStorage do not match current quiz');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load quiz results', error);
+    }
+  }, [subject, testId]);
+  
+  // If no stored results, calculate from questions data
   const calculateResults = () => {
+    // Filter questions based on subject and test ID
+    const filteredQuestions = questions.filter(
+      q => q.subjectId === subject && q.testId === parseInt(testId || '0')
+    );
+    
     let correctCount = 0;
     let attemptedCount = 0;
     
@@ -46,7 +91,7 @@ export default function ResultsPage() {
     
     const totalQuestions = filteredQuestions.length;
     const score = correctCount * 4 - (attemptedCount - correctCount); // +4 for correct, -1 for incorrect
-    const accuracy = totalQuestions > 0 
+    const accuracy = totalQuestions > 0 && attemptedCount > 0
       ? Math.round((correctCount / attemptedCount) * 100) 
       : 0;
       
@@ -58,15 +103,24 @@ export default function ResultsPage() {
       unattempted: totalQuestions - attemptedCount,
       totalQuestions,
       accuracy: isNaN(accuracy) ? 0 : accuracy,
-      timeTaken: '21:45', // This would come from the quiz timer in a real app
+      timeTaken: quizResults?.timeTaken 
+        ? formatTime(quizResults.timeTaken) 
+        : '21:45',
     };
+  };
+  
+  // Format seconds to mm:ss
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
   
   const [results] = useState(calculateResults());
   
   // Get current subject and chapter
   const currentSubject = subjects.find(s => s.id === subject);
-  const currentChapter = chapters.find(c => c.id === chapter && c.subjectId === subject);
+  const currentChapter = chapters.find(c => c.id === safeChapter && c.subjectId === subject);
   
   // Get subject color class
   const getSubjectColorClass = (type: 'bg' | 'text' | 'border' | 'hover') => {
@@ -110,7 +164,7 @@ export default function ResultsPage() {
         return apiRequest("POST", "/api/bookmarks", {
           userId: user?.id,
           subjectId: subject,
-          chapterId: chapter,
+          chapterId: safeChapter,
           testId: testId,
           questionId: questionId.toString(),
         });
@@ -184,7 +238,21 @@ export default function ResultsPage() {
     );
   }
   
-  const testTitle = chapter.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  const testTitle = safeChapter.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  
+  // Use either the stored results or calculate from static data
+  const finalResults = quizResults ? {
+    score: quizResults.score,
+    totalMarks: quizResults.totalQuestions * 4,
+    correctAnswers: quizResults.correctAnswers,
+    incorrectAnswers: quizResults.incorrectAnswers,
+    unattempted: quizResults.unattempted,
+    totalQuestions: quizResults.totalQuestions,
+    accuracy: quizResults.totalQuestions > 0 && (quizResults.correctAnswers + quizResults.incorrectAnswers) > 0
+      ? Math.round((quizResults.correctAnswers / (quizResults.correctAnswers + quizResults.incorrectAnswers)) * 100)
+      : 0,
+    timeTaken: formatTime(quizResults.timeTaken),
+  } : results;
   
   return (
     <div className="container mx-auto px-4 py-6 max-w-7xl">
@@ -204,7 +272,7 @@ export default function ResultsPage() {
             </div>
             <div className="mt-4 md:mt-0 flex items-center bg-white bg-opacity-20 px-4 py-2 rounded-lg">
               <Clock className="h-5 w-5 mr-2" />
-              <span>Completed in {results.timeTaken}</span>
+              <span>Completed in {finalResults.timeTaken}</span>
             </div>
           </div>
           
@@ -214,9 +282,9 @@ export default function ResultsPage() {
                 <Award className="h-8 w-8 mb-2 text-yellow-300" />
                 <h3 className="text-lg font-semibold mb-1">Score</h3>
                 <p className="text-3xl font-bold">
-                  {results.score}
+                  {finalResults.score}
                 </p>
-                <p className="text-sm text-white text-opacity-80">out of {results.totalMarks}</p>
+                <p className="text-sm text-white text-opacity-80">out of {finalResults.totalMarks}</p>
               </div>
             </div>
             
@@ -224,7 +292,7 @@ export default function ResultsPage() {
               <div className="bg-white bg-opacity-20 rounded-lg p-4 h-full flex flex-col items-center justify-center text-center">
                 <Target className="h-8 w-8 mb-2 text-green-300" />
                 <h3 className="text-lg font-semibold mb-1">Accuracy</h3>
-                <p className="text-3xl font-bold">{results.accuracy}%</p>
+                <p className="text-3xl font-bold">{finalResults.accuracy}%</p>
                 <p className="text-sm text-white text-opacity-80">{performance.label}</p>
               </div>
             </div>
@@ -233,9 +301,9 @@ export default function ResultsPage() {
               <div className="bg-white bg-opacity-20 rounded-lg p-4 h-full flex flex-col items-center justify-center text-center">
                 <CheckCircle className="h-8 w-8 mb-2 text-green-300" />
                 <h3 className="text-lg font-semibold mb-1">Correct</h3>
-                <p className="text-3xl font-bold">{results.correctAnswers}</p>
+                <p className="text-3xl font-bold">{finalResults.correctAnswers}</p>
                 <p className="text-sm text-white text-opacity-80">
-                  out of {results.totalQuestions} questions
+                  out of {finalResults.totalQuestions} questions
                 </p>
               </div>
             </div>
@@ -244,9 +312,9 @@ export default function ResultsPage() {
               <div className="bg-white bg-opacity-20 rounded-lg p-4 h-full flex flex-col items-center justify-center text-center">
                 <XCircle className="h-8 w-8 mb-2 text-red-300" />
                 <h3 className="text-lg font-semibold mb-1">Incorrect</h3>
-                <p className="text-3xl font-bold">{results.incorrectAnswers}</p>
+                <p className="text-3xl font-bold">{finalResults.incorrectAnswers}</p>
                 <p className="text-sm text-white text-opacity-80">
-                  {results.unattempted} unattempted
+                  {finalResults.unattempted} unattempted
                 </p>
               </div>
             </div>
@@ -301,25 +369,25 @@ export default function ResultsPage() {
                       <div>
                         <div className="flex justify-between mb-1">
                           <span className="text-sm font-medium text-green-600">Correct</span>
-                          <span className="text-sm font-medium">{results.correctAnswers}/{results.totalQuestions}</span>
+                          <span className="text-sm font-medium">{finalResults.correctAnswers}/{finalResults.totalQuestions}</span>
                         </div>
-                        <Progress value={(results.correctAnswers / results.totalQuestions) * 100} className="h-2 bg-gray-200" indicatorClassName="bg-green-500" />
+                        <Progress value={(finalResults.correctAnswers / finalResults.totalQuestions) * 100} className="h-2 bg-gray-200" indicatorClassName="bg-green-500" />
                       </div>
                       
                       <div>
                         <div className="flex justify-between mb-1">
                           <span className="text-sm font-medium text-red-600">Incorrect</span>
-                          <span className="text-sm font-medium">{results.incorrectAnswers}/{results.totalQuestions}</span>
+                          <span className="text-sm font-medium">{finalResults.incorrectAnswers}/{finalResults.totalQuestions}</span>
                         </div>
-                        <Progress value={(results.incorrectAnswers / results.totalQuestions) * 100} className="h-2 bg-gray-200" indicatorClassName="bg-red-500" />
+                        <Progress value={(finalResults.incorrectAnswers / finalResults.totalQuestions) * 100} className="h-2 bg-gray-200" indicatorClassName="bg-red-500" />
                       </div>
                       
                       <div>
                         <div className="flex justify-between mb-1">
                           <span className="text-sm font-medium text-gray-600">Unattempted</span>
-                          <span className="text-sm font-medium">{results.unattempted}/{results.totalQuestions}</span>
+                          <span className="text-sm font-medium">{finalResults.unattempted}/{finalResults.totalQuestions}</span>
                         </div>
-                        <Progress value={(results.unattempted / results.totalQuestions) * 100} className="h-2 bg-gray-200" indicatorClassName="bg-gray-500" />
+                        <Progress value={(finalResults.unattempted / finalResults.totalQuestions) * 100} className="h-2 bg-gray-200" indicatorClassName="bg-gray-500" />
                       </div>
                     </div>
                   </div>
@@ -334,10 +402,10 @@ export default function ResultsPage() {
                           </div>
                           <div>
                             <h5 className="font-medium">Correct Answers</h5>
-                            <p className="text-sm text-gray-600">+{results.correctAnswers * 4} points</p>
+                            <p className="text-sm text-gray-600">+{finalResults.correctAnswers * 4} points</p>
                           </div>
                         </div>
-                        <span className="text-xl font-bold text-green-600">+{results.correctAnswers * 4}</span>
+                        <span className="text-xl font-bold text-green-600">+{finalResults.correctAnswers * 4}</span>
                       </div>
                       
                       <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100">
@@ -347,10 +415,10 @@ export default function ResultsPage() {
                           </div>
                           <div>
                             <h5 className="font-medium">Incorrect Answers</h5>
-                            <p className="text-sm text-gray-600">-{results.incorrectAnswers} points</p>
+                            <p className="text-sm text-gray-600">-{finalResults.incorrectAnswers} points</p>
                           </div>
                         </div>
-                        <span className="text-xl font-bold text-red-600">-{results.incorrectAnswers}</span>
+                        <span className="text-xl font-bold text-red-600">-{finalResults.incorrectAnswers}</span>
                       </div>
                       
                       <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-100">
@@ -360,10 +428,10 @@ export default function ResultsPage() {
                           </div>
                           <div>
                             <h5 className="font-medium">Total Score</h5>
-                            <p className="text-sm text-gray-600">Out of {results.totalMarks}</p>
+                            <p className="text-sm text-gray-600">Out of {finalResults.totalMarks}</p>
                           </div>
                         </div>
-                        <span className="text-xl font-bold text-blue-600">{results.score}</span>
+                        <span className="text-xl font-bold text-blue-600">{finalResults.score}</span>
                       </div>
                     </div>
                   </div>
@@ -437,13 +505,13 @@ export default function ResultsPage() {
                 </div>
                 
                 <div className="flex space-x-2">
-                  <Link href={`/subject/${subject}/${chapter}`}>
+                  <Link href={`/subject/${subject}/${safeChapter}`}>
                     <Button variant="outline" className="flex items-center">
                       <ArrowLeft className="h-4 w-4 mr-1" />
                       Back to Chapter
                     </Button>
                   </Link>
-                  <Link href={`/subject/${subject}/${chapter}/test/${testId}`}>
+                  <Link href={`/subject/${subject}/${safeChapter}/test/${testId}`}>
                     <Button className={`${getSubjectColorClass('bg')} ${getSubjectColorClass('hover')} text-white`}>
                       Retry Quiz
                     </Button>
@@ -462,106 +530,129 @@ export default function ResultsPage() {
                 Question Analysis
               </motion.h3>
               
-              {filteredQuestions.map((question, index) => (
-                <motion.div 
-                  key={question.id} 
-                  variants={itemVariants}
-                >
-                  <Card className="overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                    <CardContent className="p-5">
-                      <div className="flex justify-between mb-3">
-                        <div className="flex items-center space-x-2">
-                          <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-md text-sm font-medium">
-                            Question {index + 1}
+              {quizResults?.questionData ? (
+                quizResults.questionData.map((question: {
+                  id: number;
+                  questionText: string;
+                  options: string[];
+                  correctOption: number;
+                  selectedOption: number | null;
+                  explanation?: string;
+                }, index: number) => (
+                  <motion.div 
+                    key={question.id} 
+                    className="bg-white rounded-lg shadow-sm p-4 mb-4"
+                    variants={itemVariants}
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center space-x-3">
+                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-md text-sm font-medium">
+                          Question {index + 1}
+                        </span>
+                        {question.selectedOption === question.correctOption ? (
+                          <span className="bg-green-100 text-green-700 px-2 py-1 rounded-md text-sm font-medium flex items-center">
+                            <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                            Correct
                           </span>
-                          {question.selectedOptionIndex === question.correctOptionIndex ? (
-                            <span className="bg-green-100 text-green-700 px-2 py-1 rounded-md text-sm font-medium flex items-center">
-                              <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                              Correct
-                            </span>
-                          ) : question.selectedOptionIndex !== null ? (
-                            <span className="bg-red-100 text-red-700 px-2 py-1 rounded-md text-sm font-medium flex items-center">
-                              <XCircle className="h-3.5 w-3.5 mr-1" />
-                              Incorrect
-                            </span>
-                          ) : (
-                            <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-md text-sm font-medium">
-                              Not Attempted
-                            </span>
-                          )}
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-yellow-500 hover:text-yellow-600 p-1 h-auto"
-                          onClick={() => toggleBookmark(question.id)}
-                        >
-                          {bookmarked.includes(question.id) ? (
-                            <Star className="h-5 w-5 fill-yellow-500" />
-                          ) : (
-                            <Star className="h-5 w-5" />
-                          )}
-                        </Button>
+                        ) : question.selectedOption !== null ? (
+                          <span className="bg-red-100 text-red-700 px-2 py-1 rounded-md text-sm font-medium flex items-center">
+                            <XCircle className="h-3.5 w-3.5 mr-1" />
+                            Incorrect
+                          </span>
+                        ) : (
+                          <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-md text-sm font-medium flex items-center">
+                            <AlertCircle className="h-3.5 w-3.5 mr-1" />
+                            Unattempted
+                          </span>
+                        )}
                       </div>
                       
-                      <h4 className="text-lg font-medium mb-4">{question.questionText}</h4>
-                      
-                      <div className="space-y-2 mb-4">
-                        {question.options.map((option, optionIndex) => (
-                          <div
-                            key={optionIndex}
-                            className={`
-                              flex items-start p-3 rounded-lg border
-                              ${optionIndex === question.correctOptionIndex
-                                ? 'bg-green-50 border-green-200'
-                                : optionIndex === question.selectedOptionIndex && optionIndex !== question.correctOptionIndex
-                                  ? 'bg-red-50 border-red-200'
-                                  : 'border-gray-200 hover:bg-gray-50'
-                              }
-                            `}
-                          >
-                            <span className="font-medium text-gray-700 mr-2 bg-gray-100 h-6 w-6 rounded-full flex items-center justify-center text-sm">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleBookmark(question.id)}
+                        className={`
+                          p-2 h-8 w-8 rounded-full 
+                          ${bookmarked.includes(question.id) ? 'text-purple-600 bg-purple-50' : 'text-gray-500 hover:text-purple-600'}
+                        `}
+                      >
+                        <BookmarkIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    
+                    <h4 className="text-lg font-medium mb-3">{question.questionText}</h4>
+                    
+                    <div className="space-y-2 mb-4">
+                      {question.options.map((option: string, optionIndex: number) => (
+                        <div 
+                          key={optionIndex}
+                          className={`
+                            flex items-start p-3 rounded-lg border
+                            ${optionIndex === question.correctOption
+                              ? 'bg-green-50 border-green-200'
+                              : optionIndex === question.selectedOption && optionIndex !== question.correctOption
+                                ? 'bg-red-50 border-red-200'
+                                : 'border-gray-200 hover:bg-gray-50'
+                            }
+                          `}
+                        >
+                          <div className="flex items-center h-5 mr-3">
+                            <div className="text-sm font-bold w-5 h-5 flex items-center justify-center">
                               {String.fromCharCode(65 + optionIndex)}
-                            </span>
-                            <div className="flex-1">
-                              <div className="flex justify-between">
-                                <div>{option}</div>
-                                <div className="flex items-center ml-4">
-                                  {optionIndex === question.correctOptionIndex && (
-                                    <span className="text-green-600 font-medium flex items-center text-sm">
-                                      <CheckCircle className="h-4 w-4 mr-1" />
-                                      Correct
-                                    </span>
-                                  )}
-                                  {optionIndex === question.selectedOptionIndex && optionIndex !== question.correctOptionIndex && (
-                                    <span className="text-red-600 font-medium flex items-center text-sm">
-                                      <XCircle className="h-4 w-4 mr-1" />
-                                      Your Answer
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                      
-                      {question.explanation && (
-                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                          <h5 className="font-medium mb-2 flex items-center text-blue-700">
-                            <AlertCircle className="h-4 w-4 mr-1" />
-                            Explanation
-                          </h5>
-                          <p className="text-gray-700">{question.explanation}</p>
+                          
+                          <div className="flex flex-1 justify-between items-center">
+                            <div>{option}</div>
+                            <div className="flex items-center ml-4">
+                              {optionIndex === question.correctOption && (
+                                <span className="text-green-600 font-medium flex items-center text-sm">
+                                  <CheckCircle className="h-4 w-4 mr-1" />
+                                  Correct
+                                </span>
+                              )}
+                              {optionIndex === question.selectedOption && optionIndex !== question.correctOption && (
+                                <span className="text-red-600 font-medium flex items-center text-sm">
+                                  <XCircle className="h-4 w-4 mr-1" />
+                                  Your answer
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
+                      ))}
+                    </div>
+                    
+                    {question.explanation && (
+                      <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                        <h5 className="text-sm font-medium text-blue-800 mb-1">Explanation:</h5>
+                        <p className="text-sm text-blue-700">{question.explanation}</p>
+                      </div>
+                    )}
+                  </motion.div>
+                ))
+              ) : (
+                <div className="bg-white rounded-lg p-8 text-center">
+                  <div className="mb-4">
+                    <AlertCircle className="h-12 w-12 mx-auto text-amber-500" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-2">Quiz data not available</h3>
+                  <p className="text-gray-600 mb-4">
+                    Detailed question analysis is not available for this quiz. This might happen 
+                    if you're viewing an older quiz result or if there was an issue saving your answers.
+                  </p>
+                  <Button
+                    onClick={() => navigate(`/subject/${subject}/${safeChapter}`)}
+                    className={`${getSubjectColorClass('bg')} ${getSubjectColorClass('hover')} text-white`}
+                  >
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Return to Chapter
+                  </Button>
+                </div>
+              )}
               
               <motion.div variants={itemVariants} className="mt-8 flex justify-between">
-                <Link href={`/subject/${subject}/${chapter}`}>
+                <Link href={`/subject/${subject}/${safeChapter}`}>
                   <Button 
                     variant="link" 
                     className={`${getSubjectColorClass('text')} p-0 flex items-center`}
@@ -570,7 +661,7 @@ export default function ResultsPage() {
                     Back to Chapter
                   </Button>
                 </Link>
-                <Link href={`/subject/${subject}/${chapter}/test/${testId}`}>
+                <Link href={`/subject/${subject}/${safeChapter}/test/${testId}`}>
                   <Button className={`${getSubjectColorClass('bg')} ${getSubjectColorClass('hover')} text-white`}>
                     Retry Quiz
                   </Button>

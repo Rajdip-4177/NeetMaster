@@ -179,15 +179,28 @@ export const QuizProvider = ({ children }: { children: ReactNode }) => {
     
     // Record additional stats in localStorage for better result tracking
     try {
-      localStorage.setItem('quizResults', JSON.stringify({
+      const quizResults = {
         score: calculatedScore,
         totalQuestions: quizQuestions.length,
         correctAnswers: correct,
         incorrectAnswers: incorrect,
         unattempted: unattempted,
         timeTaken: calculateElapsedTime(),
-        completedAt: new Date().toISOString()
-      }));
+        completedAt: new Date().toISOString(),
+        subject: subject,
+        testId: testId,
+        // Store the actual question data with user's selections for results page
+        questionData: quizQuestions.map(q => ({
+          id: q.id,
+          questionText: q.questionText,
+          options: q.options,
+          correctOption: q.correctOption,
+          selectedOption: q.selectedOption,
+          explanation: q.explanation
+        }))
+      };
+      
+      localStorage.setItem('quizResults', JSON.stringify(quizResults));
     } catch (e) {
       console.error("Failed to save quiz results", e);
     }

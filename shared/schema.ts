@@ -15,6 +15,7 @@ export const users = pgTable("users", {
   age: integer("age"),
   address: text("address"),
   class: text("class").default("11"),
+  isAdmin: boolean("is_admin").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -79,6 +80,26 @@ export const insertQuizAttemptSchema = createInsertSchema(quizAttempts).omit({
   createdAt: true,
 });
 
+// Questions model
+export const questions = pgTable("questions", {
+  id: serial("id").primaryKey(),
+  subjectId: text("subject_id").notNull(),
+  chapterId: text("chapter_id").notNull(),
+  testId: integer("test_id").notNull(),
+  questionText: text("question_text").notNull(),
+  options: json("options").$type<string[]>().notNull(),
+  correctOptionIndex: integer("correct_option_index").notNull(),
+  explanation: text("explanation"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertQuestionSchema = createInsertSchema(questions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -91,6 +112,9 @@ export type InsertBookmark = z.infer<typeof insertBookmarkSchema>;
 
 export type QuizAttempt = typeof quizAttempts.$inferSelect;
 export type InsertQuizAttempt = z.infer<typeof insertQuizAttemptSchema>;
+
+export type Question = typeof questions.$inferSelect;
+export type InsertQuestion = z.infer<typeof insertQuestionSchema>;
 
 // Authentication schemas
 export const loginSchema = z.object({
